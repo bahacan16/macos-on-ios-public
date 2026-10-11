@@ -1,0 +1,86 @@
+# Convert + sign a Mac app into an .ipa for your own device without owning a Mac (docs/no-mac.md).
+# Signing secrets: P12_BASE64, P12_PASSWORD, PROFILE_BASE64 (without them: conversion-only dry run).
+name: iOS build
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "probe, or an https URL of a .zip/.dmg/.tar with a native arm64 Mac .app you own"
+        default: probe
+      bundle_id:
+        description: "Bundle id (empty: from the profile)"
+        required: false
+      convert_args:
+        description: "Extra convert_app.py options, e.g. --allow-network"
+        required: false
+  push:  # builds the probe when the converter or shims change
+    paths:
+      - .github/workflows/ios-build.yml
+      - tools/ci_build.sh
+      - tools/convert_app.py
+      - tools/gap.py
+      - tools/macho.py
+      - tools/macinfo.m
+      - shim/**
+      - probe/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode
+        run: |
+          # newest release Xcode on the image (its iOS SDK decides which symbols get shims)
+          X=$(for x in /Applications/Xcode_[0-9]*.app; do
+                case $x in *[Bb]eta*|*_RC*|*[Rr]elease_[Cc]andidate*) ;; *) echo "$x" ;; esac
+              done | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+          echo "iOS SDK $(xcrun --sdk iphoneos --show-sdk-version)"
+
+      - name: Convert and sign
+        env:
+          APP: ${{ inputs.app || 'probe' }}
+          BUNDLE_ID: ${{ inputs.bundle_id }}
+          CONVERT_ARGS: ${{ inputs.convert_args }}
+          P12_BASE64: ${{ secrets.P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.PROFILE_BASE64 }}
+          T: ${{ runner.temp }}/macos-on-ios
+          OUT: ${{ runner.temp }}/out
+        run: tools/ci_build.sh "$APP"
+
+      # The .ipa carries your profile (team, device UDIDs) and a converted copy of someone's app:
+      # it stays private (README "Legal and safety": no redistribution).
+      - name: Upload .ipa
+        if: success() && github.event.repository.private
+        uses: actions/upload-artifact@v5
+        with:
+          name: ipa
+          path: ${{ runner.temp }}/out/*.ipa
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Public repository, .ipa not uploaded
+        if: success() && !github.event.repository.private
+        run: echo "::warning::this repository is public; make it private to get the .ipa as an artifact"
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: convert-log
+          path: ${{ runner.temp }}/out/convert.log
+          if-no-files-found: ignore
+          retention-days: 7

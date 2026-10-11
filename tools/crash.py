@@ -2,22 +2,26 @@
 """Print the crashing thread of the newest iPad crash report for a process.
 
 usage: crash.py <process name> [udid]
+       crash.py <report.ips>    (a report already copied off the device, e.g. without a Mac: docs/no-mac.md)
 """
 import json, os, re, subprocess, sys, tempfile
 
 name = sys.argv[1]
-udid = sys.argv[2] if len(sys.argv) > 2 else os.environ["UDID"]
-listing = subprocess.run(["xcrun", "devicectl", "device", "info", "files", "--device", udid,
-                          "--domain-type", "systemCrashLogs"], capture_output=True, text=True).stdout
-reports = sorted(re.findall(rf"^({re.escape(name)}-\S+\.ips)", listing, re.M))
-if not reports:
-    sys.exit("no crash report")
-dest = os.path.join(tempfile.mkdtemp(), "crash.ips")
-subprocess.run(["xcrun", "devicectl", "device", "copy", "from", "--device", udid, "--domain-type", "systemCrashLogs",
-                "--source", reports[-1], "--destination", dest], capture_output=True)
-d = json.loads(open(dest).read().split("\n", 1)[1])
+if name.endswith(".ips") and os.path.isfile(name):
+    report, dest = os.path.basename(name), name
+else:
+    udid = sys.argv[2] if len(sys.argv) > 2 else os.environ["UDID"]
+    listing = subprocess.run(["xcrun", "devicectl", "device", "info", "files", "--device", udid,
+                              "--domain-type", "systemCrashLogs"], capture_output=True, text=True).stdout
+    reports = sorted(re.findall(rf"^({re.escape(name)}-\S+\.ips)", listing, re.M))
+    if not reports:
+        sys.exit("no crash report")
+    report, dest = reports[-1], os.path.join(tempfile.mkdtemp(), "crash.ips")
+    subprocess.run(["xcrun", "devicectl", "device", "copy", "from", "--device", udid, "--domain-type", "systemCrashLogs",
+                    "--source", report, "--destination", dest], capture_output=True)
+d = json.loads(open(dest, encoding="utf-8").read().split("\n", 1)[1])
 ex = d.get("exception", {})
-print(f"{reports[-1]}: {ex.get('type')} {ex.get('subtype', '')} {d.get('asi', '')}".strip())
+print(f"{report}: {ex.get('type')} {ex.get('subtype', '')} {d.get('asi', '')}".strip())
 images = d["usedImages"]
 for t in d["threads"]:
     if t.get("triggered"):

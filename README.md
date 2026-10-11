@@ -23,6 +23,8 @@ files are included; nothing here bypasses DRM, copy protection, code signing or 
 - An iPad/iPhone with Developer Mode on, paired with the Mac (`xcrun devicectl list devices`).
 - The game installed on the Mac (native arm64 build: `lipo -archs <exe>` must include arm64).
 
+No Mac: convert and sign on GitHub Actions, install from a Windows/Linux PC ([docs/no-mac.md](docs/no-mac.md)).
+
 No jailbreak, no JIT, no debugger at runtime. Native code only: Mono/JIT games (Unity Mono) do not
 work this way (see "Limits").
 
