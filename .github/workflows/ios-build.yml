@@ -43,7 +43,7 @@ jobs:
         run: |
           # newest release Xcode on the image (its iOS SDK decides which symbols get shims)
           X=$(for x in /Applications/Xcode_[0-9]*.app; do
-                case $x in *[Bb]eta*|*_RC*|*[Rr]elease_[Cc]andidate*) ;; *) echo "$x" ;; esac
+                case $x in (*[Bb]eta*|*_RC*|*[Rr]elease_[Cc]andidate*) ;; (*) echo "$x" ;; esac  # (pat): bash 3.2 in $()
               done | sort -V | tail -1)
           sudo xcode-select -s "$X"
           xcodebuild -version
